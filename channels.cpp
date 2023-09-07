@@ -1,7 +1,7 @@
 #ifndef MY_UNIQUE_INCLUDE_NAME_H
 #define MY_UNIQUE_INCLUDE_NAME_H
 
-// All content here.
+// header files
     #include <iostream>
     #include <unistd.h>
     #include <sys/socket.h>
@@ -26,7 +26,6 @@ using namespace std;
 //global variables 
 class Channels;
 vector<Channels*> channels;
-char buffer[BUFFER_SIZE];
 
 class Channels
 {
@@ -46,18 +45,34 @@ class Channels
         int accept_client();
         void channel_listen();
         void delete_channel();
-        Channels* search_channel_by_name(char* name);
-        void form_client(int new_client);
-        void check_unique_name(int new_client);
+        void form_client(int new_client, char* name);
+        void check_unique_name(int new_client, char* buffer);
         void reset_fd_set();
-        int search_by_fd(int fd);
         void check_clients();
-        void leave_client(Client* cli, int iter);
-        int search_client_by_name(string name);
+        void leave_client(Client* cli, int ind);
+        int leave_client(Client* cli);        
         void handle_commands(char* msg, Client* cli);
+
+        //searching functions
+        Channels* search_channel_by_name(char* name);
+        Client* search_client_by_name(string name);
+        int int_search_by_fd(int fd);
+        Client* search_by_fd(int fd);
+        int search_client_fd(int fd);
 };
 
 //functions
+int Channels::search_client_fd(int fd)
+{
+    for(int i = 0; i<MAX_CLIENTS; i++)
+    {
+        if(clients_fd[i] == 0)
+            continue;
+        if(clients_fd[i] == fd) 
+            return i;
+    }
+    return -1;
+}
 
 void Channels::handle_commands(char* msg, Client* cli)
 {
@@ -66,29 +81,89 @@ void Channels::handle_commands(char* msg, Client* cli)
     if(strcmp(cmd,"pm") == 0)
     {
         char name[NAME_LENGTH];
-        extract(msg, name);
-        cli->send_message_private(&msg[3], search_client_by_name(name), strlen(name));
+        extract(&msg[3], name);
+        cli->send_message_private(&msg[3+strlen(name)], search_client_by_name(name));
     }
+
     else if(strcmp(cmd, "name") == 0)
     {   
         cli->change_name(&msg[5]);
     }
+
     else if(strcmp(cmd, "admin") == 0)
     {
         cli->make_admin(&msg[6]);
     }
+
+    else if(strcmp(cmd, "kick") == 0)
+    {
+        if(cli->admin_check())
+        {
+            char* name = &msg[5];
+            trim(name);
+            char buffer[BUFFER_SIZE];
+            Client* new_cli = search_client_by_name(name);
+            if(!leave_client(new_cli))
+            {
+                char buffer[BUFFER_SIZE];
+                sprintf(buffer, "Error Client not found\n");
+                write(cli->fd, buffer, strlen(buffer));
+            }
+            sprintf(buffer, "%s has been kicked by Admin %s\n", name, this->name);
+            cli->send_message(buffer, clients_fd, MAX_CLIENTS);
+        }
+    }
+}
+
+int Channels::int_search_by_fd(int fd)
+{
+    int i = 0;
+    for( ; i < Client_pointers.size(); i++)
+    {
+        if(fd == Client_pointers[i]->fd)
+        {
+            return i;
+        }
+    }
+    return i;
+}
+
+int Channels::leave_client(Client* cli)
+{
+    char buffer[BUFFER_SIZE];
+    sprintf(buffer, "You have been kicked\n");
+    write(cli->fd, buffer, strlen(buffer));
+    FD_CLR(cli->fd, &fdSet);
+    close(cli->fd);
+    int ind = int_search_by_fd(cli->fd);
+    if(ind == Client_pointers.size())
+    {        
+        return 0;
+    }
+    vector<Client*>::iterator iter = Client_pointers.begin() + ind;
+    Client_pointers.erase(iter);
+    ind = search_client_fd(cli->fd);
+    if(ind == -1)
+    {
+        return 0;
+    }
+    clients_fd[ind] = 0;
+    delete(cli);
+    return 1;
 }
 
 void Channels::leave_client(Client* cli, int ind)
 {
+    vector<Client*>::iterator iter = Client_pointers.begin() + ind;
     cout<<"client "<<cli->name<<" closing connection\n";
     FD_CLR(cli->fd, &fdSet);
     close(cli->fd);
-    Client_pointers[ind] = NULL;
+    Client_pointers.erase(iter);
     delete(cli);
+    cout<<"CHecl\n";
 }
 
-int Channels::search_client_by_name(string name)
+Client* Channels::search_client_by_name(string name)
 {
     for(int i = 0; i<Client_pointers.size(); i++)
     {
@@ -100,11 +175,11 @@ int Channels::search_client_by_name(string name)
         {
             if(name.compare(Client_pointers[i]->name) == 0)
             {
-                return Client_pointers[i]->fd;
+                return Client_pointers[i];
             }
         }
     }
-    return -1;
+    return NULL;
 }
 
 void Channels::check_clients()
@@ -115,7 +190,7 @@ void Channels::check_clients()
     }
 }
 
-int Channels::search_by_fd(int fd)
+Client* Channels::search_by_fd(int fd)
 {
     int i = 0;
 
@@ -123,19 +198,11 @@ int Channels::search_by_fd(int fd)
     {
         if(fd == Client_pointers[i]->fd)
         {
-            return i;
+            return Client_pointers[i];
         }
     }
-    return i;
+    return NULL;
 }   
-
-void check(int check, char *msg)
-{
-    if(check < 0)
-    {
-        perror(msg);
-    }
-}
 
 Channels::Channels(char* Name)
 {
@@ -144,6 +211,8 @@ Channels::Channels(char* Name)
 
 void Channels::create_channel(int port)
 {
+    char buffer[BUFFER_SIZE];
+    bzero(buffer, BUFFER_SIZE);
     opt = 1;
     portno = port;
     //setting up server properties
@@ -182,11 +251,13 @@ void Channels::create_channel(int port)
     //clearing the socket file descriptors
     FD_ZERO(&fdSet);
     FD_SET(server_fd, &fdSet);
-
 }
 
 int Channels::accept_client()
 {
+    char buffer[BUFFER_SIZE];
+    bzero(buffer, BUFFER_SIZE);
+
     sprintf(buffer, "Welcome to the Server\n");
     int new_client = accept(server_fd, (struct sockaddr*)&address, &addrlen);
     if(new_client == 0)
@@ -207,7 +278,7 @@ int Channels::accept_client()
     return new_client;
 }
 
-void Channels::check_unique_name(int new_client)
+void Channels::check_unique_name(int new_client, char* buffer)
 {
     int i = 0;
     name:
@@ -254,33 +325,21 @@ void Channels::reset_fd_set()
     }
 }
 
-void Channels::form_client(int new_client)
+void Channels::form_client(int new_client, char* name)
 {
-    int i = search_by_fd(0);     
+
+    int i = int_search_by_fd(0);
     if(i == Client_pointers.size())
     {
         cout<<"pushed new client\n";
-        Client_pointers.push_back(new Client(new_client, ++uid, buffer));
+        Client_pointers.push_back(new Client(new_client, ++uid, name));
     }
     else
     {
         cout<<"used client renamed\n";
-        Client_pointers[i] =  new Client(new_client, ++uid, buffer);
+        Client_pointers[i] =  new Client(new_client, ++uid, name);
         cout<<Client_pointers[i]->name<<endl;
         cout<<Client_pointers[i]->uid;
-    }
-    bzero(buffer, BUFFER_SIZE);
-}
-
-void trim_buffer(char *msg, int length)
-{
-    for(int i = 0; i<length; i++)
-    {
-        if(msg[i] == '\n' || msg[i] == '\r')
-        {
-            msg[i] = '\0';
-            break;
-        }
     }
 }
 
@@ -288,17 +347,13 @@ void Channels::channel_listen()
 {
     while(1)
     {
+        char buffer[BUFFER_SIZE];
         bzero(buffer, BUFFER_SIZE);
         max_fd = server_fd;
 
         //finding max file descriptor
         for(int i = 0; i<MAX_CLIENTS; i++)
         {
-            // if(sd > 0)
-            // {
-            //     FD_SET(sd, &fdSet);
-            // }
-            //finding maximum file descriptor
             if(clients_fd[i] > max_fd)
             {
                 max_fd = clients_fd[i];
@@ -324,10 +379,11 @@ void Channels::channel_listen()
             int new_client = accept_client();
 
             //Adding new Client
-            check_unique_name(new_client);
+            bzero(buffer, BUFFER_SIZE);
+            check_unique_name(new_client, buffer);
 
             //Forming new Client Object
-            form_client(new_client);
+            form_client(new_client, buffer);
         }
 
         else
@@ -341,10 +397,9 @@ void Channels::channel_listen()
                 else if(FD_ISSET(clients_fd[i], &fdSet))
                 {
                     //searching for active client
-                    int ind = search_by_fd(clients_fd[i]);
-                    Client* cli;
-                    cli = Client_pointers[ind];
-                    if(ind == Client_pointers.size())
+                    int iter = int_search_by_fd(clients_fd[i]);
+                    Client* cli = Client_pointers[i];
+                    if(iter == Client_pointers.size())
                     {
                         cout<<"error fd not found\n";
                         continue;
@@ -352,7 +407,7 @@ void Channels::channel_listen()
                     
                     if(read(clients_fd[i], buffer, BUFFER_SIZE) == 0)
                     {
-                        leave_client(cli, ind);
+                        leave_client(cli, iter);
                         clients_fd[i] = 0;
                         break;
                     }
@@ -360,7 +415,7 @@ void Channels::channel_listen()
                     cout<<buffer<<endl;
                     if(strcmp(buffer, "/leave") == 0)
                     {
-                        leave_client(cli, ind);
+                        leave_client(cli, iter);
                         clients_fd[i] = 0;
                         break;
                     }

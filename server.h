@@ -1,7 +1,7 @@
 #ifndef MY_UNIQUE_INCLUDE_NAME_H
 #define MY_UNIQUE_INCLUDE_NAME_H
 
-// All content here.
+// header files
     #include <iostream>
     #include <unistd.h>
     #include <sys/socket.h>
@@ -21,7 +21,7 @@
 using namespace std;
 
 class Client
-{
+{ 
     public : 
         string name; int fd, uid, admin;
 
@@ -38,21 +38,35 @@ class Client
                     name = s;
                 }
         //command based functions 
-        void handle_commands(char* cmd);
-        void leave_client();
-        void send_message_private(char* msg, int fd, int name_length);
+        void send_message_private(char* msg, Client* cli);
         void change_name(char* name);
         void make_admin(char* pwd);
+        int admin_check();
+
 };
 
 //function definations    
 
-void Client::send_message_private(char* msg, int fd, int name_length)
+int Client::admin_check()
 {
-    if(fd!=-1)
+    if(admin == 1)
+    {
+        return 1;
+    }
+    char msg[BUFFER_SIZE];
+    sprintf(msg, "You are not an Admin\n");
+    write(fd, msg, strlen(msg));
+    return 0;    
+}
+
+void Client::send_message_private(char* msg, Client* cli)
+{
+    char buffer[BUFFER_SIZE];
+    if(cli!=NULL)
     {
         cout<<"Message from "<<name<<" : "<<msg<<endl;
-        write(fd, &msg[name_length+1], strlen(msg));
+        sprintf(buffer, "Message from %s : %s", name, msg);
+        write(cli->fd, msg, strlen(msg));
     }
     else
     {
