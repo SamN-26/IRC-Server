@@ -1,5 +1,5 @@
-#ifndef MY_UNIQUE_INCLUDE_NAME_H
-#define MY_UNIQUE_INCLUDE_NAME_H
+#ifndef STANDARD_HEADER_FILES
+#define STANDART_HEADER_FILES
 
 // header files
     #include <iostream>
@@ -12,8 +12,13 @@
     #include <string.h>
     #include <sys/select.h>
     #include <vector>
+#endif
+
+#ifndef CUSTOM_HEADER
+#define CUSTOM_HEADER
     #include "helper.h"
-    #include "server.h"
+    #include "message.h"
+    #include "client.h"
 #endif
 
 using namespace std;
@@ -38,20 +43,24 @@ class Channels
     int clients_fd[MAX_CLIENTS];
     fd_set fdSet;
 
-
     public : 
-        Channels(char* name);
-        void create_channel(int port);
-        int accept_client();
+
+        //channel functions 
+        Channels(char* name, int portno);
+        void create_channel();       
         void channel_listen();
-        void delete_channel();
-        void form_client(int new_client, char* name);
-        void check_unique_name(int new_client, char* buffer);
-        void reset_fd_set();
+        void delete_channel(); 
+        void reset_fd_set();      
+        void handle_commands(char* msg, Client* cli);
+        void channel_handler();
+
+        //client related functions
+        int accept_client();
         void check_clients();
         void leave_client(Client* cli, int ind);
-        int leave_client(Client* cli);        
-        void handle_commands(char* msg, Client* cli);
+        int leave_client(Client* cli);  
+        void form_client(int new_client, char* name);
+        void check_unique_name(int new_client, char* buffer);
 
         //searching functions
         Channels* search_channel_by_name(char* name);
@@ -62,6 +71,12 @@ class Channels
 };
 
 //functions
+
+void Channels::channel_handler()
+{
+    
+}
+
 int Channels::search_client_fd(int fd)
 {
     for(int i = 0; i<MAX_CLIENTS; i++)
@@ -82,7 +97,9 @@ void Channels::handle_commands(char* msg, Client* cli)
     {
         char name[NAME_LENGTH];
         extract(&msg[3], name);
-        cli->send_message_private(&msg[3+strlen(name)], search_client_by_name(name));
+
+        Message* Msg = new Message(&msg[3+strlen(name)], name, cli->name);
+        cli->send_message_private(Msg, search_client_by_name(name));
     }
 
     else if(strcmp(cmd, "name") == 0)
@@ -110,7 +127,16 @@ void Channels::handle_commands(char* msg, Client* cli)
                 write(cli->fd, buffer, strlen(buffer));
             }
             sprintf(buffer, "%s has been kicked by Admin %s\n", name, this->name);
-            cli->send_message(buffer, clients_fd, MAX_CLIENTS);
+            Message* Msg = new Message(buffer);
+            cli->send_message(Msg, clients_fd, MAX_CLIENTS);
+        }
+    }
+
+    else if(strcmp(cmd, "create") == 0)
+    {
+        if(cli->admin_check())
+        {
+
         }
     }
 }
@@ -204,17 +230,17 @@ Client* Channels::search_by_fd(int fd)
     return NULL;
 }   
 
-Channels::Channels(char* Name)
+Channels::Channels(char* Name, int Portno)
 {
     name = Name;
+    portno = Portno;
 }
 
-void Channels::create_channel(int port)
+void Channels::create_channel()
 {
     char buffer[BUFFER_SIZE];
     bzero(buffer, BUFFER_SIZE);
     opt = 1;
-    portno = port;
     //setting up server properties
     address.sin_port = htons(portno);
     address.sin_family = AF_INET;
@@ -425,7 +451,10 @@ void Channels::channel_listen()
                     }
                     else
                     {
-                        cli->send_message(buffer, clients_fd, MAX_CLIENTS);
+                        char* name;
+                        string_to_char(name, cli->name);
+                        Message* msg = new Message(buffer, name, this->name);
+                        cli->send_message(msg, clients_fd, MAX_CLIENTS);
                         bzero(buffer, BUFFER_SIZE);
                         break;
                     }
@@ -436,9 +465,10 @@ void Channels::channel_listen()
 }
 
 //Main
-int main(int argc, char* argv[])
+int main()
 {
-    channels.push_back(new Channels("General"));
-    channels[0]->create_channel(atoi(argv[1]));
+    channels.push_back(new Channels("General", 9999));
+    channels[0]->create_channel();
+    cout<<"General Channel Created\n";
     channels[0]->channel_listen();
 }

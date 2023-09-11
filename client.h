@@ -1,5 +1,5 @@
-#ifndef MY_UNIQUE_INCLUDE_NAME_H
-#define MY_UNIQUE_INCLUDE_NAME_H
+#ifndef STANDARD_HEADER_FILES
+#define STANDARD_HEADER FILES
 
 // header files
     #include <iostream>
@@ -12,10 +12,16 @@
     #include <string.h>
     #include <sys/select.h>
     #include <vector>
-    #include "helper.h"
 #endif
 
-#define PASSWORD "MLSC2023"
+#ifndef CUSTOM_HEADER
+#define CUSTOM_HEADER
+    #include "helper.h"
+    #include "message.h"
+#endif
+
+
+#define PASSWORD "69420"
 #define BUFFER_SIZE 2048
 
 using namespace std;
@@ -32,13 +38,13 @@ class Client
         Client(int Fd, int Uid);
 
         //basic functionality functions 
-        void send_message(char* msg, int* clients_fd, int size);
+        void send_message(Message* msg, int* clients_fd, int size);
         void setName(char* s)
                 {
                     name = s;
                 }
         //command based functions 
-        void send_message_private(char* msg, Client* cli);
+        void send_message_private(Message* msg, Client* cli);
         void change_name(char* name);
         void make_admin(char* pwd);
         int admin_check();
@@ -59,19 +65,18 @@ int Client::admin_check()
     return 0;    
 }
 
-void Client::send_message_private(char* msg, Client* cli)
+void Client::send_message_private(Message* msg, Client* cli)
 {
-    char buffer[BUFFER_SIZE];
     if(cli!=NULL)
     {
-        cout<<"Message from "<<name<<" : "<<msg<<endl;
-        sprintf(buffer, "Message from %s : %s", name, msg);
-        write(cli->fd, msg, strlen(msg));
+        cout<<"Private Message from "<<msg->return_sender()<<" to "<<msg->return_rec()<<endl;
+        write(cli->fd, msg, sizeof(msg));
     }
     else
     {
-        sprintf(msg,"Name not Found\n");
-        write(this->fd, msg, strlen(msg));
+        char buffer[BUFFER_SIZE];
+        sprintf(buffer,"Name not Found\n");
+        write(this->fd, buffer, strlen(buffer));
     }
 }
 
@@ -90,9 +95,8 @@ Client::Client(int Fd, int Uid, char* Name)
     admin = 0;
 }
 
-void Client::send_message(char* msg, int* clients_fd, int size)
+void Client::send_message(Message* msg, int* clients_fd, int size)
 {
-    sprintf(msg, "%s\n", msg);
     for(int i = 0; i<size; i++)
     {
         if(clients_fd[i] == fd || clients_fd[i] == 0)
@@ -101,7 +105,7 @@ void Client::send_message(char* msg, int* clients_fd, int size)
         }
         else
         {
-            write(clients_fd[i], msg, strlen(msg));
+            write(clients_fd[i], msg, sizeof(msg));
         }
     }
 }

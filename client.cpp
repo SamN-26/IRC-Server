@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <sys/select.h>
+#include "message.h"
 
 using namespace std;
 
@@ -15,6 +16,7 @@ using namespace std;
 int main() {
     int client_socket;
     struct sockaddr_in server_address;
+    string name;
 
     // Create the socket
     if ((client_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -29,7 +31,8 @@ int main() {
     memset(&(server_address.sin_zero), '\0', 8);
 
     // Connect to the server
-    if (connect(client_socket, (struct sockaddr *)&server_address, sizeof(struct sockaddr)) == -1) {
+    if (connect(client_socket, (struct sockaddr *)&server_address, sizeof(struct sockaddr)) == -1) 
+    {
         perror("Connect failed");
         exit(EXIT_FAILURE);
     }
@@ -52,24 +55,29 @@ int main() {
         }
 
         // Handle user input
-        if (FD_ISSET(STDIN_FILENO, &readfds)) {
+        if (FD_ISSET(STDIN_FILENO, &readfds)) 
+        {
             fgets(buffer, BUFFER_SIZE, stdin);
             buffer[strcspn(buffer, "\n")] = '\0';
 
             // Send the message to the server
-            if (send(client_socket, buffer, strlen(buffer), 0) == -1) {
+            if (send(client_socket, buffer, strlen(buffer), 0) == -1) 
+            {
                 perror("Send failed");
                 exit(EXIT_FAILURE);
             }
         }
 
         // Handle incoming messages from the server
-        if (FD_ISSET(client_socket, &readfds)) {
+        if (FD_ISSET(client_socket, &readfds)) 
+        {
             int bytes_received = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
-            if (bytes_received == -1) {
+            if (bytes_received == -1) 
+            {
                 perror("Receive failed");
                 exit(EXIT_FAILURE);
-            } else if (bytes_received == 0) {
+            } else if (bytes_received == 0) 
+            {
                 // Server disconnected
                 cout<<"Server disconnected\n";
                 break;
